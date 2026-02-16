@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: account-migrations
+  namespace: account
+data:
+  20250813125114_init.up.sql: |
+    CREATE TABLE IF NOT EXISTS accounts (
+        id UUID PRIMARY KEY,
+        nick VARCHAR(31) NOT NULL UNIQUE,
+        phone VARCHAR(20) NOT NULL UNIQUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        deleted_at TIMESTAMPTZ NULL
+    );

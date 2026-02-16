@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: account
+  namespace: account
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: account
+  template:
+    metadata:
+      labels:
+        app: account
+    spec:
+      containers:
+        - name: account
+          image: account:local
+          imagePullPolicy: Never
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          ports:
+            - name: grpc
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9091
+          env:
+            - name: GRPC_ADDR
+              value: ":8080"
+            - name: METRICS_ADDR
+              value: ":9091"
+            - name: POSTGRES_URI
+              valueFrom:
+                secretKeyRef:
+                  name: account-secrets
+                  key: POSTGRES_URI
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_SERVICE_NAME
+              value: "account-service"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "otel-collector.account.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1.0"
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: account
+  namespace: account
+spec:
+  selector:
+    app: account
+  ports:
+    - name: grpc
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9091
+      targetPort: 9091
