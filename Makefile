@@ -50,28 +50,38 @@ k8s-kind-create:
 	kind create cluster --name account
 
 k8s-kind-delete:
-	kind delete cluster --name account
+	timeout 120s kind delete cluster --name account || true
 
 k8s-load-image:
 	docker build -t account:local .
 	kind load docker-image account:local --name account
 
 k8s-apply:
-	kubectl apply -k k8s
+	timeout 60s kubectl --request-timeout=20s apply -k k8s
 
 k8s-refresh:
-	kubectl apply -k k8s
-	kubectl -n account get deployment -o name | xargs -r kubectl -n account rollout restart
-	kubectl -n account get statefulset -o name | xargs -r kubectl -n account rollout restart || true
-	kubectl -n account get daemonset -o name | xargs -r kubectl -n account rollout restart || true
+	kubectl --request-timeout=20s apply -k k8s
+	kubectl --request-timeout=20s -n account get deployment -o name | xargs -r kubectl --request-timeout=20s -n account rollout restart
+	kubectl --request-timeout=20s -n account get statefulset -o name | xargs -r kubectl --request-timeout=20s -n account rollout restart || true
+	kubectl --request-timeout=20s -n account get daemonset -o name | xargs -r kubectl --request-timeout=20s -n account rollout restart || true
 
 k8s-delete:
-	kubectl delete -k k8s --ignore-not-found
+	timeout 40s kubectl --request-timeout=20s delete -k k8s --ignore-not-found --wait=false || true
 
 k8s-migrate:
-	kubectl -n account delete job account-migrate --ignore-not-found
-	kubectl apply -f k8s/account/migration-job.yaml
-	kubectl -n account logs -f job/account-migrate
+	@set -e; \
+	if ! kubectl --request-timeout=20s -n account rollout status deployment/postgres --timeout=420s; then \
+		echo "postgres is not ready, collecting diagnostics..."; \
+		kubectl --request-timeout=20s -n account get pods -o wide || true; \
+		kubectl --request-timeout=20s -n account describe deployment/postgres || true; \
+		kubectl --request-timeout=20s -n account describe pod -l app=postgres || true; \
+		kubectl --request-timeout=20s -n account logs deploy/postgres --tail=200 || true; \
+		exit 1; \
+	fi
+	kubectl --request-timeout=20s -n account delete job account-migrate --ignore-not-found
+	kubectl --request-timeout=20s apply -f k8s/account/migration-job.yaml
+	kubectl --request-timeout=20s -n account wait --for=condition=complete --timeout=420s job/account-migrate
+	kubectl --request-timeout=20s -n account logs job/account-migrate
 
 k8s-pf-grafana:
 	kubectl -n account port-forward svc/grafana 3000:3000
@@ -88,8 +98,12 @@ k8s-pf-account:
 k8s-pf-cadvisor:
 	kubectl -n account port-forward svc/cadvisor 8081:8080
 
+k8s-pf-postgres:
+	kubectl -n account port-forward svc/postgres 5432:5432
+
 k8s-up:
-	@if ! kind get clusters | grep -qx "account"; then \
+	@set -e; \
+	if ! kind get clusters | grep -qx "account"; then \
 		$(MAKE) k8s-kind-create; \
 	else \
 		echo "kind cluster 'account' already exists"; \
@@ -99,5 +113,5 @@ k8s-up:
 	$(MAKE) k8s-migrate
 
 k8s-down-all:
-	-$(MAKE) k8s-delete
-	-$(MAKE) k8s-kind-delete
+	$(MAKE) k8s-delete
+	timeout 120s kind delete cluster --name account || true

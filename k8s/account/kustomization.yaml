@@ -6,6 +6,5 @@ resources:
   - postgres-pvc.yaml
   - postgres.yaml
   - migrations-configmap.yaml
-  - migration-job.yaml
   - account-app.yaml
   - account-hpa.yaml

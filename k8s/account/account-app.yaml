@@ -13,6 +13,26 @@ spec:
       labels:
         app: account
     spec:
+      initContainers:
+        - name: wait-for-schema
+          image: postgres:16
+          command: ["sh", "-c"]
+          args:
+            - |
+              until pg_isready -d "$POSTGRES_URI"; do
+                echo "waiting for postgres..."
+                sleep 2
+              done
+              until [ "$(psql "$POSTGRES_URI" -tAc "SELECT to_regclass('public.accounts') IS NOT NULL")" = "t" ]; do
+                echo "waiting for accounts table..."
+                sleep 2
+              done
+          env:
+            - name: POSTGRES_URI
+              valueFrom:
+                secretKeyRef:
+                  name: account-secrets
+                  key: POSTGRES_URI
       containers:
         - name: account
           image: account:local
